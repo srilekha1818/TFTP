@@ -1,0 +1,38 @@
+TFTP project:
+client:                                                                server:
+1.connect                                                                server running ...
+2.PUT
+3.GET
+4.Mode
+5.Exit
+ 1 connect:read the ip address of the server ,
+ validate and store it for use.again need to 
+ display all 5 options.
+ 2.PUT
+ until the server is running 
+ client 
+ 1.read file name from user 
+ 2.validate if file is present or not
+ if present continue not present stop put execution
+ 3.send the filename operation and mode to the server side.                   1.collect req from client 
+                                                                              2.check operation type(put or get)
+                                                                              3.PUT:3.validate if file is present or not  if not present create new file with particular name
+                                                                              if present ->clear the data of the file
+after step4 in server,                                                         4.send the ack to client
+receive the ack
+5.check the ack is success or failure
+//failure ->stop the execution
+//success->continue
+6.read the 512 bytes of data from the file 
+7.send the file data and pack no to the server                                 5.after step7 in client,collect the filedata and then share it to the file.
+
+8.after the 6th step in server,collect the ack.                                 6.send the ack as the packno.
+9.check ack is success or failure 
+//success=>continue nextr pack//fail=>send same packet again
+                             
+6,7,8,9 in client and 5,6 in server continue until the file reaches eof.
+
+GET:reverse the operation of PUTmode:3 modes 
+1.normal mode 512
+2.octect mode 1byte
+3.netascii mode replace \n with \r and \n as its in windows
