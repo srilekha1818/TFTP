@@ -12,6 +12,14 @@ int main() {
     tftp_client_t client;
     memset(&client, 0, sizeof(client));  // Initialize client structure
 
+    char ip[INET_ADDRSTRLEN];
+    int port=PORT;
+    printf("connect ");
+    scanf("%15s",ip);
+    connect_to_server(&client,ip,port);
+   
+
+
     // Main loop for command-line interface
     while (1) {
         printf("tftp> ");
@@ -35,6 +43,28 @@ void process_command(tftp_client_t *client, char *command) {
 // This function is to initialize socket with given server IP, no packets sent to server in this function
 void connect_to_server(tftp_client_t *client, char *ip, int port) {
     // Create UDP socket
+   client->sockfd=socket(AF_INET,SOCK_DGRAM,0);
+   if(client->sockfd<0){
+    perror("socket");
+    exit(EXIT_FAILURE);
+
+   }
+   memset(&client->server_addr,0,sizeof(client->server_addr));
+   client->server_addr.sin_family=AF_INET;
+   client->server_addr.sin_port=htons(port);
+   if(inet_pton(AF_INET,ip,&client->server_addr.sin_addr)<=0){
+    printf("Invalid IP address\n");
+    close(client->sockfd);
+    client->sockfd=-1;
+    return;
+   }
+   strncpy(client->server_ip,ip,sizeof(client->server_ip)-1);
+   client->server_ip[sizeof(client->server_ip)-1]='\0';
+   client->server_len=sizeof(client->server_addr);
+   struct timeval tv={TIMEOUT_SEC,0};
+   setsockopt(client->sockfd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));
+   printf("connected to the server %s : %d successfully\n",client->server_ip,port);
+
   
 
     // Set socket timeout option
