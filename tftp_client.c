@@ -76,6 +76,27 @@ void connect_to_server(tftp_client_t *client, char *ip, int port) {
 
 void put_file(tftp_client_t *client, char *filename) {
     // Send WRQ request and send file
+    FILE *fp=fopen(filename,"rb");
+    if(!fp){
+        printf("File not found %s\n",filename);
+        return;
+    }
+    fclose(fp);
+    //BUILD WRQ
+    char buffer[BUFFER_SIZE];
+    int len=0;
+    buffer[len++]=0;
+    buffer[len++]=WRQ;
+    strcpy(&buffer[len],filename);
+    len+=strlen(filename)+1;
+    strcpy(&buffer[len],"octet");
+    len+=strlen("octet")+1;
+    int sent=sendto(client->sockfd,buffer,len,0,(struct sockaddr *)&client->server_addr,client->server_len);
+    if(sent<0){
+        perror("sendto");
+        return;
+    }
+    printf("WRQ request sent successfully for file %s to the server\n ",filename);
 
 }
 
