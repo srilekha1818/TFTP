@@ -37,6 +37,58 @@ int main() {
 
 // Function to process commands
 void process_command(tftp_client_t *client, char *command) {
+    if(strncmp(command,"connect",7)==0){
+        char ip[INET_ADDRSTRLEN];
+        if(sscanf(command,"connect %15s",ip)==1){
+            connect_to_server(client,ip,PORT);
+
+        }
+        else{
+            printf("Usage:connect <server_ip>\n");
+
+        }
+    }
+    else if(strncmp(command,"put",3)==0){
+        char filename[128];
+        if(sscanf(command,"put %127s",filename)==1){
+            put_file(client,filename);
+        }
+        else{
+            printf("Usage:put <filename>\n");
+
+        }
+    }
+    else if(strncmp(command,"get",3)==0){
+        char filename[128];
+          if(sscanf(command,"get %127s",filename)==1){
+            get_file(client,filename);
+        }
+        else{
+            printf("Usage:get <filename>\n");
+
+        }
+    }
+    else if(strncmp(command,"mode",4)==0){
+        //need to implement yet
+    }
+    else if(strcmp(command,"exit")==0){
+        disconnect(client);
+        exit(0);
+
+    }
+  else if(strcmp(command, "help") == 0) {
+    printf("\n commands to be followed :\n");
+    printf("  connect <server_ip>   - connect to TFTP server\n");
+    printf("  put <filename>        - upload a file to server\n");
+    printf("  get <filename>        - download a file from server\n");
+    printf("  mode <octet/netascii> - set transfer mode\n");
+    printf("  exit                  - disconnect and exit\n");
+   
+}
+
+    else{
+        printf("Unknown command.Type help for options.\n");
+    }
    
 }
 
@@ -75,45 +127,78 @@ void connect_to_server(tftp_client_t *client, char *ip, int port) {
 }
 
 void put_file(tftp_client_t *client, char *filename) {
-    // Send WRQ request and send file
-    FILE *fp=fopen(filename,"rb");
+     FILE *fp=fopen(filename,"rb");
     if(!fp){
         printf("File not found %s\n",filename);
         return;
     }
     fclose(fp);
-    //BUILD WRQ
-    char buffer[BUFFER_SIZE];
-    int len=0;
-    buffer[len++]=0;
-    buffer[len++]=WRQ;
-    strcpy(&buffer[len],filename);
-    len+=strlen(filename)+1;
-    strcpy(&buffer[len],"octet");
-    len+=strlen("octet")+1;
-    int sent=sendto(client->sockfd,buffer,len,0,(struct sockaddr *)&client->server_addr,client->server_len);
-    if(sent<0){
-        perror("sendto");
-        return;
-    }
-    printf("WRQ request sent successfully for file %s to the server\n ",filename);
+    send_request(client->sockfd,client->server_addr,filename,WRQ);
+    receive_request(client->sockfd,client->server_addr,filename,WRQ); 
 
 }
 
 void get_file(tftp_client_t *client, char *filename) {
     // Send RRQ and recive file 
+    send_request(client->sockfd,client->server_addr,filename,RRQ);
+    receive_request(client->sockfd,client->server_addr,filename,RRQ);
   
 }
 
 void disconnect(tftp_client_t *client) {
     // close fd
+    if(client->sockfd>=0){
+        close(client->sockfd);
+        client->sockfd=-1;
+    }
    
 }
-void send_request(int sockfd, sockaddr_in server_addr, char *filename, int opcode)
+void send_request(int sockfd, struct  sockaddr_in server_addr, char *filename, int opcode)
 {
-
+  tftp_packet pkt;
+  pkt.opcode=htons(opcode);
+  strncpy(pkt.body.request.filename,filename,sizeof(pkt.body.request.filename));
+  strcpy(pkt.body.request.mode,"octet");
+int sent=sendto(sockfd,&pkt,sizeof(pkt),0,(struct sockaddr *)&server_addr,sizeof(server_addr));
+ if(sent<0){
+        perror("sendto");
+        return;
+    }
+    printf("%s request sent successfully for file %s to the server\n ",opcode==WRQ?"WRQ":"RRQ",filename);
 }
 
-void receive_request(int sockfd, sockaddr_in server_addr, char *filename, int opcode)
+void receive_request(int sockfd, struct  sockaddr_in server_addr, char *filename, int opcode)
 {
+    tftp_packet pkt,ack;
+    socklen_t addrlen=sizeof(server_addr);
+    if(opcode==WRQ){
+        FILE *fp=fopen(filename,"rb");
+        if(!fp){
+            printf("File open failed.\n");
+            return;
+        }
+        unit16_t block=0;
+        while(1){
+            block++;
+            size_t bytes_read=fread(pkt.body.data_packet.data,1,512,fp);
+            pkt.opcode=htons(DATA);
+            pkt.body.data_packet.block_numbr=htons(block);
+            sendto(sockfd,&pkt,bytes_read+4,0,(struct sockaddr*)&server_addr,addrlen);
+            int n=recvfrom(sockfd,&ack,sizeof(ack),0,(struict sockaddr*)&server_addr,&addrlen);
+            if(n<0){
+                perror("ACK timeout");
+                break;
+            }
+            if(ntohs(ack.opcode)==ACK &&ntohs(ack.body.ack_packet.block_number)==block){
+                if(bytes_read<512)break;
+            }
+        }
+        fclose(fp);
+        printf("File %s uploaded successfully\n",filename);
+    }
+    else if(opcode==RRQ){
+        
+    }
+
+
 }
