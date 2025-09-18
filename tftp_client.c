@@ -157,7 +157,7 @@ void send_request(int sockfd, struct  sockaddr_in server_addr, char *filename, i
 {
   tftp_packet pkt;
   pkt.opcode=htons(opcode);
-  strncpy(pkt.body.request.filename,filename,sizeof(pkt.body.request.filename));
+  strncpy(pkt.body.request.filename,filename,sizeof(pkt.body.request.filename)-1);
   strcpy(pkt.body.request.mode,"octet");
 int sent=sendto(sockfd,&pkt,sizeof(pkt),0,(struct sockaddr *)&server_addr,sizeof(server_addr));
  if(sent<0){
@@ -167,38 +167,72 @@ int sent=sendto(sockfd,&pkt,sizeof(pkt),0,(struct sockaddr *)&server_addr,sizeof
     printf("%s request sent successfully for file %s to the server\n ",opcode==WRQ?"WRQ":"RRQ",filename);
 }
 
-void receive_request(int sockfd, struct  sockaddr_in server_addr, char *filename, int opcode)
-{
-    tftp_packet pkt,ack;
-    socklen_t addrlen=sizeof(server_addr);
-    if(opcode==WRQ){
-        FILE *fp=fopen(filename,"rb");
-        if(!fp){
+// ================= RECEIVE REQUEST =================
+void receive_request(int sockfd, struct sockaddr_in server_addr, char *filename, int opcode) {
+    tftp_packet pkt, ack;
+    socklen_t addrlen = sizeof(server_addr);
+
+    if (opcode == WRQ) { // File upload
+        FILE *fp = fopen(filename, "rb");
+        if (!fp) {
             printf("File open failed.\n");
             return;
         }
-        unit16_t block=0;
-        while(1){
+        uint16_t block = 0;
+        while (1) {
             block++;
-            size_t bytes_read=fread(pkt.body.data_packet.data,1,512,fp);
-            pkt.opcode=htons(DATA);
-            pkt.body.data_packet.block_numbr=htons(block);
-            sendto(sockfd,&pkt,bytes_read+4,0,(struct sockaddr*)&server_addr,addrlen);
-            int n=recvfrom(sockfd,&ack,sizeof(ack),0,(struict sockaddr*)&server_addr,&addrlen);
-            if(n<0){
+            size_t bytes_read = fread(pkt.body.data_packet.data, 1, 512, fp);
+            pkt.opcode = htons(DATA);
+            pkt.body.data_packet.block_number = htons(block);
+
+            sendto(sockfd, &pkt, bytes_read + 4, 0,
+                   (struct sockaddr*)&server_addr, addrlen);
+
+            int n = recvfrom(sockfd, &ack, sizeof(ack), 0,
+                             (struct sockaddr*)&server_addr, &addrlen);
+            if (n < 0) {
                 perror("ACK timeout");
                 break;
             }
-            if(ntohs(ack.opcode)==ACK &&ntohs(ack.body.ack_packet.block_number)==block){
-                if(bytes_read<512)break;
+            if (ntohs(ack.opcode) == ACK &&
+                ntohs(ack.body.ack_packet.block_number) == block) {
+                if (bytes_read < 512) break;
+            }
+        }
+    fclose(fp);
+if (feof(fp))
+    printf("File %s uploaded successfully\n", filename);
+else
+    printf("File %s upload failed (timeout or error)\n", filename);
+    }
+    else if (opcode == RRQ) { // File download
+        FILE *fp = fopen(filename, "wb");
+        if (!fp) {
+            printf("File create failed\n");
+            return;
+        }
+        uint16_t expected_block = 1;
+        while (1) {
+            int n = recvfrom(sockfd, &pkt, sizeof(pkt), 0,
+                             (struct sockaddr*)&server_addr, &addrlen);
+            if (n < 0) {
+                perror("Data receive error");
+                break;
+            }
+            if (ntohs(pkt.opcode) == DATA &&
+                ntohs(pkt.body.data_packet.block_number) == expected_block) {
+                fwrite(pkt.body.data_packet.data, 1, n - 4, fp);
+
+                ack.opcode = htons(ACK);
+                ack.body.ack_packet.block_number = htons(expected_block);
+                sendto(sockfd, &ack, sizeof(ack), 0,
+                       (struct sockaddr*)&server_addr, addrlen);
+
+                if (n < 516) break; // last block received
+                expected_block++;
             }
         }
         fclose(fp);
-        printf("File %s uploaded successfully\n",filename);
+        printf("File %s downloaded successfully\n", filename);
     }
-    else if(opcode==RRQ){
-        
-    }
-
-
-}
+     }
